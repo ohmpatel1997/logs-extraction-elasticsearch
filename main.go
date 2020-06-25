@@ -3,9 +3,9 @@ package main
 import (
 	"bufio"
 	"fmt"
+	//"github.com/olivere/elastic"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,75 +44,43 @@ func main() {
 	}}
 
 	wg := sync.WaitGroup{}
-
 	scanner.Scan()
 	for {
 		lines = append(lines, scanner.Text())
 		willScan := scanner.Scan()
 		if len(lines) == linesChunkLen || !willScan {
 			linesToProcess := lines
-			wg.Add(len(linesToProcess))
+			wg.Add(1) // add the count once every 100000 lines
 			go func() {
+
 				entries := logsPool.Get().([]Log)[:0]
 				for _, text := range linesToProcess {
 
 					entry := Log{}
 					timeStampEndingIndex := strings.Index(text, ",")
 					entry.Message = text[:timeStampEndingIndex]
-					time := text[timeStampEndingIndex+1:]
-					time.parse
+					logCreationTime := text[timeStampEndingIndex+1:]
+
+					if entry.CreatedOn, err = time.Parse("2006-01-02T15:04:05-0700Z", logCreationTime); err != nil {
+						fmt.Printf("Could not able to parse the time :%s for log : %v", logCreationTime, entry)
+						return
+					}
 					entries = append(entries, entry)
 				}
-				linesPool.Put(linesToProcess)
-				mutex.Lock()
-				for _, entry := range entries {
-					if len(entry.firstName) != 0 {
-						nameCount := nameMap[entry.firstName] + 1
-						nameMap[entry.firstName] = nameCount
-						if nameCount > commonCount {
-							commonCount = nameCount
-							commonName = entry.firstName
-						}
-					}
-					if namesCounted == false {
-						if namesCount == 0 {
-							fmt.Printf("Name: %s at index: %v\n", entry.name, 0)
-						} else if namesCount == 432 {
-							fmt.Printf("Name: %s at index: %v\n", entry.name, 432)
-						} else if namesCount == 43243 {
-							fmt.Printf("Name: %s at index: %v\n", entry.name, 43243)
-							namesCounted = true
-						}
-						namesCount++
-					}
-					dateMap[entry.date]++
-				}
-				mutex.Unlock()
-				entriesPool.Put(entries)
-				wg.Add(-len(entries))
+				linesPool.Put(linesToProcess) // put back the line slice in pool
+				//ParseAndIndexBulk()
+				logsPool.Put(entries) //put back the log slice in pool
+				wg.Done()             //decrease the count
 			}()
-			lines = linesPool.Get().([]string)[:0]
+			lines = linesPool.Get().([]string)[:0] // get the new lines pool to store the new lines
 		}
 		if !willScan {
 			break
 		}
 	}
 	wg.Wait()
-
-	// report c2: names at index
 	fmt.Printf("Name time: %v\n", time.Since(start))
 
-	// report c1: total number of lines
-	fmt.Printf("Total file line count: %v\n", fileLineCount)
-	fmt.Printf("Line count time: %v\n", time.Since(start))
-
-	// report c3: donation frequency
-	for k, v := range dateMap {
-		fmt.Printf("Donations per month and year: %v and donation ncount: %v\n", k, v)
-	}
-	fmt.Printf("Donations time: %v\n", time.Since(start))
-
-	// report c4: most common firstName
-	fmt.Printf("The most common first name is: %s and it occurs: %v times.\n", commonName, commonCount)
-	fmt.Printf("Most common name time: %v\n", time.Since(start))
 }
+
+//func ParseAndIndexBulk()
