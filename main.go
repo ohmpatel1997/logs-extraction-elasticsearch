@@ -2,32 +2,53 @@ package main
 
 import (
 	"bufio"
+
+	"context"
+	"encoding/json"
+
 	"fmt"
-	//"github.com/olivere/elastic"
+
+	elastic "github.com/olivere/elastic"
 	"log"
 	"os"
 	"strings"
 	"sync"
-
 	"time"
 )
 
 type Log struct {
 	CreatedOn time.Time `json:"created_on"`
 	Message   string    `json:"message"`
+	Line      int       `json:"line_no"`
 }
 
 func main() {
-	start := time.Now()
+
 	file, err := os.Open("logs.log")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
 
+	esClient, err := elastic.NewClient(
+		elastic.SetSniff(true),
+		elastic.SetURL("http://localhost:9200"),
+		elastic.SetHealthcheckInterval(5*time.Second),
+	)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	c := context.Background()
+	ParseAndIndexFile(c, file, esClient)
+}
+
+func ParseAndIndexFile(c context.Context, file *os.File, client *elastic.Client) {
+
+	start := time.Now()
 	scanner := bufio.NewScanner(file)
 
-	linesChunkLen := 10000 * 1024
+	linesChunkLen := 500 * 1024 //chunks of line to process
 
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]string, 0, linesChunkLen)
@@ -39,7 +60,8 @@ func main() {
 		entries := make([]Log, 0, linesChunkLen)
 		return entries
 	}}
-
+	lock := sync.Mutex{}
+	count := 0
 	wg := sync.WaitGroup{}
 	scanner.Scan()
 	for {
@@ -63,6 +85,11 @@ func main() {
 					logCreationTime := logSlice[0]
 					entry.Message = logSlice[1]
 
+					lock.Lock()
+					count++
+					entry.Line = count
+					lock.Unlock()
+					var err error
 					if entry.CreatedOn, err = time.Parse("2006-01-02T15:04:05.0000Z", logCreationTime); err != nil {
 						fmt.Printf("Could not able to parse the time :%s for log : %v", logCreationTime, text)
 						return
@@ -70,6 +97,10 @@ func main() {
 					entries = append(entries, entry)
 				}
 
+				_, err := ParseAndIndexBulk(c, client, entries)
+				if err != nil {
+					fmt.Printf("Could not able to index the entries :%s", err.Error())
+				}
 			}()
 			lines = linesPool.Get().([]string)[:0] // get the new lines pool to store the new lines
 		}
@@ -79,7 +110,33 @@ func main() {
 	}
 	wg.Wait()
 	fmt.Printf("\n time: %v\n", time.Since(start))
-
 }
 
-func ParseAndIndexBulk()
+func ParseAndIndexBulk(c context.Context, client *elastic.Client, entries []Log) (res *elastic.BulkResponse, err error) {
+
+	bulk := client.Bulk()
+	for _, log := range entries {
+
+		req := elastic.NewBulkIndexRequest()
+		jsonData, err := json.Marshal(log)
+		if err != nil {
+			return nil, err
+		}
+		req = req.OpType("index")
+		req = req.Index("daily_logs")
+		req = req.Type("_doc")
+		req = req.Doc(string(jsonData))
+		bulk = bulk.Add(req)
+	}
+
+	bulk.Pipeline("dailyindex") //preprocess the logs with daily logs pipeline which index the documents with its respective index
+	bulk.Pretty(true)
+	bulk.Human(true)
+
+	bulkResp, err := bulk.Do(c)
+	if err != nil {
+		return nil, err
+	}
+
+	return bulkResp, nil
+}
