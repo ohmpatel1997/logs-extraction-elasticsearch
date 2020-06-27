@@ -8,6 +8,7 @@ import (
 
 	"fmt"
 
+	"github.com/ohmpatel1997/logs-extraction-elasticsearch/common"
 	elastic "github.com/olivere/elastic"
 	"log"
 	"os"
@@ -30,11 +31,7 @@ func main() {
 	}
 	defer file.Close()
 
-	esClient, err := elastic.NewClient(
-		elastic.SetSniff(true),
-		elastic.SetURL("http://localhost:9200"),
-		elastic.SetHealthcheckInterval(5*time.Second),
-	)
+	esClient, err := common.GetClient()
 
 	if err != nil {
 		log.Fatal(err)

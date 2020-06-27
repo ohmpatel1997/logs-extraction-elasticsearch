@@ -3,7 +3,8 @@ package elasticsearch
 import (
 	"context"
 	"fmt"
-	elastic "github.com/olivere/elastic"
+	"github.com/ohmpatel1997/logs-extraction-elasticsearch/common"
+
 	"time"
 )
 
@@ -41,7 +42,7 @@ const (
 func CreateIndex() {
 
 	currTime := time.Now().Format("2006-01-02")
-
+	client, err := common.GetClient()
 	if err != nil {
 		fmt.Printf("Could not able to get new client :%s", err.Error())
 		return
