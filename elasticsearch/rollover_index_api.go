@@ -14,16 +14,21 @@ func RolloverIndexAPI() error {
 		return err
 	}
 	ctx := context.Background()
-	considitions := map[string]interface{}{
+	conditions := map[string]interface{}{
 		"max_age":  "1d",
 		"max_docs": "3",
 	}
-	resp, err := client.RolloverIndex("logs_write").Conditions(considitions).Do(ctx)
+	resp, err := client.RolloverIndex("write_logs").Conditions(conditions).Do(ctx)
 
 	if err != nil {
-		fmt.Printf("Could not able to rollover index: %s", err.Error())
+		fmt.Printf("\n Could not able to rollover index: %s", err.Error())
 		return err
 	}
-	fmt.Printf("Successfully Rolled Over from old index: %s to new index :%s", resp.OldIndex, resp.NewIndex)
+
+	if resp.Acknowledged {
+		fmt.Printf("\n Successfully Rolled Over from old index: %s to new index :%s", resp.OldIndex, resp.NewIndex)
+	} else {
+		fmt.Printf("\n Could not able to satisfy the roll over conditions:%v", resp.Conditions)
+	}
 	return nil
 }

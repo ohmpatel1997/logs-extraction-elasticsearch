@@ -11,7 +11,7 @@ func InitializeReadTemplate() error {
 
 	client, err := common.GetClient()
 	if err != nil {
-		fmt.Printf("Could not able to get new client :%s", err.Error())
+		fmt.Printf("\n Could not able to get new client :%s", err.Error())
 		return err
 	}
 	ctx := context.Background()
@@ -24,16 +24,16 @@ func InitializeReadTemplate() error {
 			"codec": "best_compression"
 		},
 		"aliases": {
-			"logs_search": {}
+			"search_logs": {}
 		}
 	}`
 
 	resp, err := client.IndexPutTemplate("search_logs").BodyString(settings).Do(ctx)
 
 	if err != nil {
-		fmt.Printf("Could not able to create read index template : %s", err.Error())
+		fmt.Printf("\n Could not able to create read index template : %s", err.Error())
 		return err
 	}
-	fmt.Printf("Successfully creted read index template : %v", resp.Index)
+	fmt.Printf("\n Successfully creted read index template : %v", resp.Index)
 	return nil
 }

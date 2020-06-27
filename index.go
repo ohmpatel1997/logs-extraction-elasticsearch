@@ -24,7 +24,6 @@ const (
 type Log struct {
 	CreatedOn time.Time `json:"created_on"`
 	Message   string    `json:"message"`
-	Line      int       `json:"line_no"`
 }
 
 func ParseFile() {
@@ -61,8 +60,7 @@ func ParseAndIndexFile(c context.Context, file *os.File, client *elastic.Client)
 		entries := make([]Log, 0, linesChunkLen)
 		return entries
 	}}
-	lock := sync.Mutex{}
-	count := 0
+
 	wg := sync.WaitGroup{}
 	scanner.Scan()
 	for {
@@ -76,7 +74,7 @@ func ParseAndIndexFile(c context.Context, file *os.File, client *elastic.Client)
 				defer wg.Done()
 				entries := logsPool.Get().([]Log)[:0]
 				defer linesPool.Put(linesToProcess) // put back the line slice in pool
-				//ParseAndIndexBulk()
+
 				defer logsPool.Put(entries) //put back the log slice in pool
 
 				for _, text := range linesToProcess {
@@ -86,13 +84,9 @@ func ParseAndIndexFile(c context.Context, file *os.File, client *elastic.Client)
 					logCreationTime := logSlice[0]
 					entry.Message = logSlice[1]
 
-					lock.Lock()
-					count++
-					entry.Line = count
-					lock.Unlock()
 					var err error
 					if entry.CreatedOn, err = time.Parse("2006-01-02T15:04:05.0000Z", logCreationTime); err != nil {
-						fmt.Printf("Could not able to parse the time :%s for log : %v", logCreationTime, text)
+						fmt.Printf("\n Could not able to parse the time :%s for log : %v", logCreationTime, text)
 						return
 					}
 					entries = append(entries, entry)
@@ -100,7 +94,7 @@ func ParseAndIndexFile(c context.Context, file *os.File, client *elastic.Client)
 
 				_, err := ParseAndIndexBulk(c, client, entries)
 				if err != nil {
-					fmt.Printf("Could not able to index the entries :%s", err.Error())
+					fmt.Printf("\n Could not able to index the entries :%s", err.Error())
 				}
 			}()
 			lines = linesPool.Get().([]string)[:0] // get the new lines pool to store the new lines
@@ -124,7 +118,7 @@ func ParseAndIndexBulk(c context.Context, client *elastic.Client, entries []Log)
 			return nil, err
 		}
 		req = req.OpType("index")
-		req = req.Index("daily_logs")
+		req = req.Index("logs_write")
 		req = req.Type("_doc")
 		req = req.Doc(string(jsonData))
 		bulk = bulk.Add(req)

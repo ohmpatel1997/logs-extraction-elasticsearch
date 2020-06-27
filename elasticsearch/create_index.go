@@ -27,13 +27,13 @@ const (
 				  "message":{
 					  "type":"text"
 				  },
-				  "line_no":{
-					  "type":"integer"
-				  }
+				 "timestamp": {
+					"type":"date"
+				 }
 		    }
 		},
 		"aliases": {
-			  "logs_write": {}
+			  "write_logs": {}
 		}
 	}`
 )
@@ -59,16 +59,16 @@ func CreateIndex() (err error) {
 	currTime := time.Now().Format("2006-01-02")
 	client, err := common.GetClient()
 	if err != nil {
-		fmt.Printf("Could not able to get new client :%s", err.Error())
+		fmt.Printf("\n Could not able to get new client :%s", err.Error())
 		return err
 	}
 	ctx := context.Background()
 	resp, err := client.CreateIndex(fmt.Sprintf("logs-%s-000001", currTime)).Body(MAPPINGS).Do(ctx)
 	if err != nil {
-		fmt.Printf("Could not ablen to create index :%s", err.Error())
+		fmt.Printf("\n Could not ablen to create index :%s", err.Error())
 		return err
 	}
 
-	fmt.Printf("Successfully created %v", resp)
+	fmt.Printf("\n Successfully created %v \n", resp)
 	return nil
 }
