@@ -19,6 +19,7 @@ func GetClient() (client *elastic.Client, err error) {
 	return
 }
 
+//GetWriteAlias return index alias name for write index
 func GetWriteAlias() string {
 	return WRITE_ALIAS
 }

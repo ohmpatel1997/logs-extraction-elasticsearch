@@ -14,8 +14,7 @@ const (
 		"settings" : {
 		    "index" : {
 			  "sort.field" : "created_on",
-				  "sort.order" : "desc",
-				  "refresh_interval": "1s"
+				  "sort.order" : "desc"
 			  },
 			  "number_of_shards": 14,
 			  "number_of_replicas": 1
