@@ -7,11 +7,11 @@ import (
 )
 
 //RolloverIndexAPI roll over the index and credate new index based on considitions given
-func RolloverIndexAPI() {
+func RolloverIndexAPI() error {
 	client, err := common.GetClient()
 	if err != nil {
 		fmt.Printf("Could not able to get new client :%s", err.Error())
-		return
+		return err
 	}
 	ctx := context.Background()
 	considitions := map[string]interface{}{
@@ -22,7 +22,8 @@ func RolloverIndexAPI() {
 
 	if err != nil {
 		fmt.Printf("Could not able to rollover index: %s", err.Error())
-		return
+		return err
 	}
 	fmt.Printf("Successfully Rolled Over from old index: %s to new index :%s", resp.OldIndex, resp.NewIndex)
+	return nil
 }

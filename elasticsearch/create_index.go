@@ -38,19 +38,37 @@ const (
 	}`
 )
 
-func CreateIndex() {
+func Initialize() {
+
+	if err := CreateIndex(); err != nil {
+		return
+	}
+
+	if err := InitializeReadTemplate(); err != nil {
+		return
+	}
+
+	if err := AddInjestPipeline(); err != nil {
+		return
+	}
+
+}
+
+func CreateIndex() (err error) {
 
 	currTime := time.Now().Format("2006-01-02")
 	client, err := common.GetClient()
 	if err != nil {
 		fmt.Printf("Could not able to get new client :%s", err.Error())
-		return
+		return err
 	}
 	ctx := context.Background()
 	resp, err := client.CreateIndex(fmt.Sprintf("logs-%s-000001", currTime)).Body(MAPPINGS).Do(ctx)
 	if err != nil {
 		fmt.Printf("Could not ablen to create index :%s", err.Error())
-		return
+		return err
 	}
+
 	fmt.Printf("Successfully created %v", resp)
+	return nil
 }
