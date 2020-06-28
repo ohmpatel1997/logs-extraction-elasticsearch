@@ -100,7 +100,7 @@ func ExtractLogs(file *os.File, start time.Time, end time.Time) {
 	parsingStartAt := time.Now()
 	scanner := bufio.NewScanner(file)
 
-	linesChunkLen := 10000 * 1024 //chunks of line to process
+	linesChunkLen := 100 * 1024 //chunks of line to process
 
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]string, 0, linesChunkLen)
@@ -111,8 +111,8 @@ func ExtractLogs(file *os.File, start time.Time, end time.Time) {
 	wg := sync.WaitGroup{}
 	scanner.Scan()
 
-	for {
-		lines = append(lines, scanner.Text())
+	for { //we need to scan every line, as we dont know the size of each line in prior, so we cannt use file.Seek or file.readAt
+		lines = append(lines, scanner.Text()) //this is a costly operation, we could have used channels if we knew the total lines in file
 		willScan := scanner.Scan()
 		if len(lines) == linesChunkLen || !willScan {
 			linesToProcess := lines
