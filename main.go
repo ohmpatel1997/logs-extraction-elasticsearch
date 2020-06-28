@@ -29,6 +29,7 @@ func main() {
 	}
 	startTimeArg := args[1]
 	finishTimeArg := args[3]
+	fileName := args[5]
 
 	queryStartTime, err := time.Parse("2006-01-02T15:04:05.0000Z", startTimeArg)
 	if err != nil {
@@ -42,10 +43,10 @@ func main() {
 		return
 	}
 
-	file, err := os.Open("logs.log")
+	file, err := os.Open(fileName)
 
 	if err != nil {
-		fmt.Println("Could not open the file")
+		fmt.Println("Could not open the file", err)
 		return
 	}
 	filestat, err := file.Stat()
@@ -99,7 +100,7 @@ func ExtractLogs(file *os.File, start time.Time, end time.Time) {
 	parsingStartAt := time.Now()
 	scanner := bufio.NewScanner(file)
 
-	linesChunkLen := 500 * 1024 //chunks of line to process
+	linesChunkLen := 10000 * 1024 //chunks of line to process
 
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]string, 0, linesChunkLen)
@@ -107,15 +108,9 @@ func ExtractLogs(file *os.File, start time.Time, end time.Time) {
 	}}
 	lines := linesPool.Get().([]string)[:0]
 
-	logsPool := sync.Pool{New: func() interface{} {
-		entries := make([]string, 0, linesChunkLen)
-		return entries
-	}}
-
 	wg := sync.WaitGroup{}
 	scanner.Scan()
-	var linesExtracted []string
-	lock := sync.Mutex{}
+
 	for {
 		lines = append(lines, scanner.Text())
 		willScan := scanner.Scan()
@@ -125,10 +120,7 @@ func ExtractLogs(file *os.File, start time.Time, end time.Time) {
 			go func() {
 
 				defer wg.Done()
-				entries := logsPool.Get().([]string)[:0]
 				defer linesPool.Put(linesToProcess) // put back the line slice in pool
-
-				defer logsPool.Put(entries) //put back the log slice in pool
 
 				for _, text := range linesToProcess {
 
@@ -141,13 +133,10 @@ func ExtractLogs(file *os.File, start time.Time, end time.Time) {
 						return
 					}
 					if logCreationTime.After(start) && logCreationTime.Before(end) {
-						entries = append(entries, text) //Do not append diretly to `linesExtracted`, as frequent accessing the lock, would increase the procrssing time
+						fmt.Println(text)
 					}
 				}
 
-				lock.Lock()
-				linesExtracted = append(linesExtracted, entries...) //append the chunks of data, keeping the lock access low
-				lock.Unlock()
 			}()
 			lines = linesPool.Get().([]string)[:0] // get the new lines pool to store the new lines
 		}
