@@ -2,8 +2,15 @@ package main
 
 import (
 	"bufio"
+
 	"fmt"
+
+	"io"
+
+	"math"
 	"os"
+	"runtime"
+
 	"strings"
 	"sync"
 	"time"
@@ -22,129 +29,181 @@ func main() {
 	ParseFile() */
 
 	//then you can query logs from elasticsearch using QueryLogs() function
+
+	s := time.Now()
 	args := os.Args[1:]
 	if len(args) != 6 { // for format  LogExtractor.exe -f "From Time" -t "To Time" -i "Log file directory location"
 		fmt.Println("Please give proper command line arguments")
 		return
 	}
-	startTimeArg := args[1]
-	finishTimeArg := args[3]
+	// startTimeArg := args[1]
+	// finishTimeArg := args[3]
 	fileName := args[5]
 
-	queryStartTime, err := time.Parse("2006-01-02T15:04:05.0000Z", startTimeArg)
-	if err != nil {
-		fmt.Println("Could not able to parse the start time", startTimeArg)
-		return
-	}
-
-	queryFinishTime, err := time.Parse("2006-01-02T15:04:05.0000Z", finishTimeArg)
-	if err != nil {
-		fmt.Println("Could not able to parse the start time", startTimeArg)
-		return
-	}
-
 	file, err := os.Open(fileName)
-
 	if err != nil {
-		fmt.Println("Could not open the file", err)
+		fmt.Println("cannot able to read the file", err)
 		return
 	}
-	filestat, err := file.Stat()
-	if err != nil {
-		fmt.Println("Could not able to get the file stat")
-		return
-	}
+	// queryStartTime, err := time.Parse("2006-01-02T15:04:05.0000Z", startTimeArg)
+	// if err != nil {
+	// 	fmt.Println("Could not able to parse the start time", startTimeArg)
+	// 	return
+	// }
 
-	fileSize := filestat.Size()
-	offset := fileSize - 1
-	lastLineSize := 0
+	// queryFinishTime, err := time.Parse("2006-01-02T15:04:05.0000Z", finishTimeArg)
+	// if err != nil {
+	// 	fmt.Println("Could not able to parse the finish time", finishTimeArg)
+	// 	return
+	// }
 
-	for {
-		b := make([]byte, 1)
-		n, err := file.ReadAt(b, offset)
-		if err != nil {
-			fmt.Println("Error reading file ", err)
-			break
-		}
-		char := string(b[0])
-		if char == "\n" {
-			break
-		}
-		offset--
-		lastLineSize += n
-	}
+	// filestat, err := file.Stat()
+	// if err != nil {
+	// 	fmt.Println("Could not able to get the file stat")
+	// 	return
+	// }
 
-	lastLine := make([]byte, lastLineSize)
-	_, err = file.ReadAt(lastLine, offset+1)
+	// fileSize := filestat.Size()
+	// offset := fileSize - 1
+	// lastLineSize := 0
 
-	if err != nil {
-		fmt.Println("Could not able to read last line with offset", offset, "and lastline size", lastLineSize)
-		return
-	}
+	// for {
+	// 	b := make([]byte, 1)
+	// 	n, err := file.ReadAt(b, offset)
+	// 	if err != nil {
+	// 		fmt.Println("Error reading file ", err)
+	// 		break
+	// 	}
+	// 	char := string(b[0])
+	// 	if char == "\n" {
+	// 		break
+	// 	}
+	// 	offset--
+	// 	lastLineSize += n
+	// }
 
-	logSlice := strings.SplitN(string(lastLine), ",", 2)
-	logCreationTimeString := logSlice[0]
+	// lastLine := make([]byte, lastLineSize)
+	// _, err = file.ReadAt(lastLine, offset+1)
 
-	lastLogCreationTime, err := time.Parse("2006-01-02T15:04:05.0000Z", logCreationTimeString)
-	if err != nil {
-		fmt.Println("can not able to parse time : ", err)
-	}
+	// if err != nil {
+	// 	fmt.Println("Could not able to read last line with offset", offset, "and lastline size", lastLineSize)
+	// 	return
+	// }
 
-	if lastLogCreationTime.After(queryStartTime) && lastLogCreationTime.Before(queryFinishTime) {
-		ExtractLogs(file, queryStartTime, queryFinishTime)
-	}
+	// logSlice := strings.SplitN(string(lastLine), ",", 2)
+	// logCreationTimeString := logSlice[0]
+
+	// lastLogCreationTime, err := time.Parse("2006-01-02T15:04:05.0000Z", logCreationTimeString)
+	// if err != nil {
+	// 	fmt.Println("can not able to parse time : ", err)
+	// }
+
+	// if lastLogCreationTime.After(queryStartTime) && lastLogCreationTime.Before(queryFinishTime) {
+	Process(file)
+	//}
+	fmt.Println("\nTime taken - ", time.Since(s))
 }
 
-func ExtractLogs(file *os.File, start time.Time, end time.Time) {
-
-	parsingStartAt := time.Now()
-	scanner := bufio.NewScanner(file)
-
-	linesChunkLen := 100 * 1024 //chunks of line to process
+func Process(f *os.File) (int64, error) {
 
 	linesPool := sync.Pool{New: func() interface{} {
-		lines := make([]string, 0, linesChunkLen)
+		lines := make([]byte, 250*1024)
 		return lines
 	}}
-	lines := linesPool.Get().([]string)[:0]
 
-	wg := sync.WaitGroup{}
-	scanner.Scan()
+	stringPool := sync.Pool{New: func() interface{} {
+		lines := ""
+		return lines
+	}}
 
-	for { //we need to scan every line, as we dont know the size of each line in prior, so we cannt use file.Seek or file.readAt
-		lines = append(lines, scanner.Text()) //this is a costly operation, we could have used channels if we knew the total lines in file
-		willScan := scanner.Scan()
-		if len(lines) == linesChunkLen || !willScan {
-			linesToProcess := lines
-			wg.Add(1) // add the count once every chunk of lines
-			go func() {
+	r := bufio.NewReader(f)
 
-				defer wg.Done()
-				defer linesPool.Put(linesToProcess) // put back the line slice in pool
+	nr := int64(0)
 
-				for _, text := range linesToProcess {
+	var wg sync.WaitGroup
 
-					logSlice := strings.SplitN(text, ",", 2)
-					logCreationTimeString := logSlice[0]
+	for {
+		buf := linesPool.Get().([]byte)
 
-					logCreationTime, err := time.Parse("2006-01-02T15:04:05.0000Z", logCreationTimeString)
-					if err != nil {
-						fmt.Printf("\n Could not able to parse the time :%s for log : %v", logCreationTime, text)
-						return
-					}
-					if logCreationTime.After(start) && logCreationTime.Before(end) {
-						fmt.Println(text)
-					}
+		n, err := r.Read(buf)
+		buf = buf[:n]
+
+		if n == 0 {
+			if err == nil {
+				fmt.Println(err)
+				break
+			}
+			if err == io.EOF {
+				break
+			}
+			return nr, err
+		}
+
+		nextUntillNewline, err := r.ReadBytes('\n')
+
+		if err != io.EOF {
+			buf = append(buf, nextUntillNewline...)
+		}
+
+		wg.Add(1)
+		go func() {
+			ProcessChunk(buf, &linesPool, &stringPool)
+			wg.Done()
+		}()
+
+	}
+	PrintMemUsage()
+	wg.Wait()
+
+	return nr, nil
+}
+
+func ProcessChunk(chunk []byte, linesPool *sync.Pool, stringPool *sync.Pool) {
+
+	var wg2 sync.WaitGroup
+
+	logs := stringPool.Get().(string)
+	logs = string(chunk)
+
+	linesPool.Put(chunk)
+
+	logsSlice := strings.Split(logs, "\n")
+
+	stringPool.Put(logs)
+
+	chunkSize := 500
+	n := len(logsSlice)
+	noOfThread := n / chunkSize
+
+	if n%chunkSize != 0 {
+		noOfThread++
+	}
+
+	for i := 0; i < (noOfThread); i++ {
+
+		wg2.Add(1)
+		go func(textSlice []string) {
+			for _, text := range textSlice {
+				if len(text) == 0 {
+					continue
+				}
+				logSlice := strings.SplitN(text, ",", 2)
+				logCreationTimeString := logSlice[0]
+
+				_, err := time.Parse("2006-01-02T15:04:05.0000Z", logCreationTimeString)
+				if err != nil {
+					fmt.Printf("\n Could not able to parse the time :%s for log : %v", logCreationTimeString, text)
+					return
 				}
 
-			}()
-			lines = linesPool.Get().([]string)[:0] // get the new lines pool to store the new lines
-		}
-		if !willScan {
-			break
-		}
+				// if logCreationTime.After(start) && logCreationTime.Before(end) {
+				// 	fmt.Println(text)
+				// }
+			}
+			wg2.Done()
+		}(logsSlice[i*chunkSize : int(math.Min(float64((i+1)*chunkSize), float64(len(logsSlice))))])
 	}
-	wg.Wait()
-	fmt.Printf("\n time: %v\n", time.Since(parsingStartAt)) //processing will take much less time
-	//fmt.Println(linesExtracted)                             //printing to console will take time
+
+	wg2.Wait()
+	logsSlice = nil
 }
