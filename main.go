@@ -9,7 +9,6 @@ import (
 
 	"math"
 	"os"
-	"runtime"
 
 	"strings"
 	"sync"
@@ -36,8 +35,8 @@ func main() {
 		fmt.Println("Please give proper command line arguments")
 		return
 	}
-	// startTimeArg := args[1]
-	// finishTimeArg := args[3]
+	startTimeArg := args[1]
+	finishTimeArg := args[3]
 	fileName := args[5]
 
 	file, err := os.Open(fileName)
@@ -45,66 +44,66 @@ func main() {
 		fmt.Println("cannot able to read the file", err)
 		return
 	}
-	// queryStartTime, err := time.Parse("2006-01-02T15:04:05.0000Z", startTimeArg)
-	// if err != nil {
-	// 	fmt.Println("Could not able to parse the start time", startTimeArg)
-	// 	return
-	// }
+	queryStartTime, err := time.Parse("2006-01-02T15:04:05.0000Z", startTimeArg)
+	if err != nil {
+		fmt.Println("Could not able to parse the start time", startTimeArg)
+		return
+	}
 
-	// queryFinishTime, err := time.Parse("2006-01-02T15:04:05.0000Z", finishTimeArg)
-	// if err != nil {
-	// 	fmt.Println("Could not able to parse the finish time", finishTimeArg)
-	// 	return
-	// }
+	queryFinishTime, err := time.Parse("2006-01-02T15:04:05.0000Z", finishTimeArg)
+	if err != nil {
+		fmt.Println("Could not able to parse the finish time", finishTimeArg)
+		return
+	}
 
-	// filestat, err := file.Stat()
-	// if err != nil {
-	// 	fmt.Println("Could not able to get the file stat")
-	// 	return
-	// }
+	filestat, err := file.Stat()
+	if err != nil {
+		fmt.Println("Could not able to get the file stat")
+		return
+	}
 
-	// fileSize := filestat.Size()
-	// offset := fileSize - 1
-	// lastLineSize := 0
+	fileSize := filestat.Size()
+	offset := fileSize - 1
+	lastLineSize := 0
 
-	// for {
-	// 	b := make([]byte, 1)
-	// 	n, err := file.ReadAt(b, offset)
-	// 	if err != nil {
-	// 		fmt.Println("Error reading file ", err)
-	// 		break
-	// 	}
-	// 	char := string(b[0])
-	// 	if char == "\n" {
-	// 		break
-	// 	}
-	// 	offset--
-	// 	lastLineSize += n
-	// }
+	for {
+		b := make([]byte, 1)
+		n, err := file.ReadAt(b, offset)
+		if err != nil {
+			fmt.Println("Error reading file ", err)
+			break
+		}
+		char := string(b[0])
+		if char == "\n" {
+			break
+		}
+		offset--
+		lastLineSize += n
+	}
 
-	// lastLine := make([]byte, lastLineSize)
-	// _, err = file.ReadAt(lastLine, offset+1)
+	lastLine := make([]byte, lastLineSize)
+	_, err = file.ReadAt(lastLine, offset+1)
 
-	// if err != nil {
-	// 	fmt.Println("Could not able to read last line with offset", offset, "and lastline size", lastLineSize)
-	// 	return
-	// }
+	if err != nil {
+		fmt.Println("Could not able to read last line with offset", offset, "and lastline size", lastLineSize)
+		return
+	}
 
-	// logSlice := strings.SplitN(string(lastLine), ",", 2)
-	// logCreationTimeString := logSlice[0]
+	logSlice := strings.SplitN(string(lastLine), ",", 2)
+	logCreationTimeString := logSlice[0]
 
-	// lastLogCreationTime, err := time.Parse("2006-01-02T15:04:05.0000Z", logCreationTimeString)
-	// if err != nil {
-	// 	fmt.Println("can not able to parse time : ", err)
-	// }
+	lastLogCreationTime, err := time.Parse("2006-01-02T15:04:05.0000Z", logCreationTimeString)
+	if err != nil {
+		fmt.Println("can not able to parse time : ", err)
+	}
 
-	// if lastLogCreationTime.After(queryStartTime) && lastLogCreationTime.Before(queryFinishTime) {
-	Process(file)
-	//}
+	if lastLogCreationTime.After(queryStartTime) && lastLogCreationTime.Before(queryFinishTime) {
+		Process(file, queryStartTime, queryFinishTime)
+	}
 	fmt.Println("\nTime taken - ", time.Since(s))
 }
 
-func Process(f *os.File) (int64, error) {
+func Process(f *os.File, start time.Time, end time.Time) (int64, error) {
 
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]byte, 250*1024)
@@ -147,18 +146,18 @@ func Process(f *os.File) (int64, error) {
 
 		wg.Add(1)
 		go func() {
-			ProcessChunk(buf, &linesPool, &stringPool)
+			ProcessChunk(buf, &linesPool, &stringPool, start, end)
 			wg.Done()
 		}()
 
 	}
-	PrintMemUsage()
+
 	wg.Wait()
 
 	return nr, nil
 }
 
-func ProcessChunk(chunk []byte, linesPool *sync.Pool, stringPool *sync.Pool) {
+func ProcessChunk(chunk []byte, linesPool *sync.Pool, stringPool *sync.Pool, start time.Time, end time.Time) {
 
 	var wg2 sync.WaitGroup
 
@@ -190,15 +189,15 @@ func ProcessChunk(chunk []byte, linesPool *sync.Pool, stringPool *sync.Pool) {
 				logSlice := strings.SplitN(text, ",", 2)
 				logCreationTimeString := logSlice[0]
 
-				_, err := time.Parse("2006-01-02T15:04:05.0000Z", logCreationTimeString)
+				logCreationTime, err := time.Parse("2006-01-02T15:04:05.0000Z", logCreationTimeString)
 				if err != nil {
 					fmt.Printf("\n Could not able to parse the time :%s for log : %v", logCreationTimeString, text)
 					return
 				}
 
-				// if logCreationTime.After(start) && logCreationTime.Before(end) {
-				// 	fmt.Println(text)
-				// }
+				if logCreationTime.After(start) && logCreationTime.Before(end) {
+					fmt.Println(text)
+				}
 			}
 			wg2.Done()
 		}(logsSlice[i*chunkSize : int(math.Min(float64((i+1)*chunkSize), float64(len(logsSlice))))])
